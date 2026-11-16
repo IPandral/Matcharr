@@ -230,11 +230,15 @@ docker pull ghcr.io/ipandral/matcharr:1.0.0
 
 ## Container releases
 
-GitHub Actions builds Linux `amd64` and `arm64` images. A push to `main`
-publishes `latest` and a commit tag such as `sha-a1b2c3d`. Pushing a semantic
-version tag such as `v1.2.3` additionally publishes `1.2.3`, `1.2`, and `1`.
-Pull requests build and test the image without publishing it. CI runs the
-Python integration suite against the same RustyDB image pinned in Compose.
+GitHub Actions builds Linux `amd64` and `arm64` images. Each new commit that
+passes tests and publishes its image from `main` gets the next minor GitHub
+Release, starting with `v1.0.0`, then `v1.1.0`, `v1.2.0`, and so on. The
+workflow publishes the full version, minor, major, `latest`, and commit image
+tags. A rerun of an already released commit reuses its version.
+
+Push a semantic version tag such as `v2.0.0` to publish that Docker version
+manually. Pull requests build and test without publishing. CI runs the Python
+integration suite against the same RustyDB image pinned in Compose.
 
 After the first workflow run, the repository owner must open the Matcharr
 package settings on GitHub and change its visibility to **Public** so
