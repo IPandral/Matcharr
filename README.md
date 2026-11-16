@@ -206,8 +206,19 @@ For plain HTTP local development, set `MATCHARR_SECURE_COOKIES=false`. Keep it
 
 ## Docker deployment
 
-Complete the [media server setup](#media-server-setup). For local testing over plain HTTP,
-set `MATCHARR_SECURE_COOKIES=false`. Then pull and start the published images:
+Matcharr images are hosted on [GitHub Container Registry](https://github.com/users/IPandral/packages/container/package/matcharr).
+Pull the latest image directly with:
+
+```bash
+docker pull ghcr.io/ipandral/matcharr:latest
+```
+
+To run Matcharr with RustyDB, place [`docker-compose.yml`](docker-compose.yml)
+and [`.env.example`](.env.example) in the same directory. Copy the template
+to `.env` with `cp .env.example .env` on macOS or Linux, or
+`Copy-Item .env.example .env` in PowerShell. Complete the
+[media server setup](#media-server-setup). For local testing over plain HTTP,
+set `MATCHARR_SECURE_COOKIES=false`. Then start the stack:
 
 ```bash
 docker compose pull
@@ -215,7 +226,10 @@ docker compose up -d
 ```
 
 Compose pulls `ghcr.io/ipandral/matcharr:latest` and the pinned
-`ghcr.io/ipandral/rustydb` image. RustyDB exposes ports 3307 and 8080 only on
+`ghcr.io/ipandral/rustydb` image. Set `MATCHARR_IMAGE` in `.env` to use a
+specific Matcharr version, such as `ghcr.io/ipandral/matcharr:1.0.0`.
+If the Matcharr package is private, sign in to `ghcr.io` before pulling.
+RustyDB exposes ports 3307 and 8080 only on
 the internal Compose network.
 Matcharr waits for its health check, applies migrations, and starts Gunicorn.
 Only the Matcharr HTTP port is published, on the host loopback interface by
