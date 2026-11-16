@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Matcharr{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('rooms.dashboard') if session.get('participant_id') else url_for('identity.index') }}">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span>Matcharr</span>
+    </a>
+    {% if session.get('participant_id') %}
+      <nav aria-label="Primary">
+        <a href="{{ url_for('rooms.dashboard') }}">Rooms</a>
+      </nav>
+    {% endif %}
+  </header>
+  <main id="main" tabindex="-1">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack" aria-live="polite">
+          {% for category, message in messages %}
+            <p class="flash flash-{{ category }}">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <p>No accounts. Your identity lives in this browser’s signed cookie.</p>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
+

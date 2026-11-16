@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Matcharr — Swipe together{% endblock %}
+{% block body_class %}landing{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Your {{ media_server_name }} library, one shared decision</p>
+    <h1>Swipe together.<br><span>Match a movie.</span><br>Start watching.</h1>
+    <p class="lede">Turn “what should we watch?” into a quick, private vote with the people on your sofa—or across town.</p>
+    <form class="identity-card" action="{{ url_for('identity.set_name') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="display_name">What should we call you?</label>
+      <div class="field-action">
+        <input id="display_name" name="display_name" maxlength="40" autocomplete="nickname" required placeholder="Your display name">
+        <button class="button button-primary" type="submit">Start matching</button>
+      </div>
+      <small>No email, password, or account required.</small>
+    </form>
+  </div>
+  <div class="hero-card" aria-label="Example Matcharr movie card">
+    <div class="poster-placeholder"><span>TONIGHT’S<br>MOVIE</span></div>
+    <div class="hero-card-copy">
+      <p class="rating">★ 8.4 <span>2h 12m</span></p>
+      <h2>Everyone’s pick</h2>
+      <p>When every eligible member likes the same film, it’s a match.</p>
+    </div>
+  </div>
+</section>
+<section class="how-it-works" aria-labelledby="steps-title">
+  <p class="eyebrow">Six simple steps</p>
+  <h2 id="steps-title">From {{ media_server_name }} library to play button</h2>
+  <ol class="steps">
+    <li><span>01</span><strong>Choose a name</strong><p>Anonymous identity stays in this browser.</p></li>
+    <li><span>02</span><strong>Make a room</strong><p>Or join one with a short invite code.</p></li>
+    <li><span>03</span><strong>Invite your people</strong><p>Friends and family join independently.</p></li>
+    <li><span>04</span><strong>Start a session</strong><p>Freeze the voters and movie pool.</p></li>
+    <li><span>05</span><strong>Swipe your picks</strong><p>Touch, mouse, keyboard, or buttons.</p></li>
+    <li><span>06</span><strong>Watch together</strong><p>Unanimous likes unlock the {{ media_server_name }} link.</p></li>
+  </ol>
+</section>
+{% endblock %}

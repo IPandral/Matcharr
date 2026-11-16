@@ -1,0 +1,72 @@
+services:
+  rustydb:
+    image: ghcr.io/ipandral/rustydb@sha256:89e77a7f364166e852c944100e7068eeab4a4b8a1856d9ed4b5756d19f34ba44
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      RUSTYDB_HOST: 0.0.0.0
+      RUSTYDB_PORT: 8080
+      RUSTYDB_WIRE_PORT: 3307
+      RUSTYDB_USERNAME: ${RUSTYDB_USERNAME:-matcharr}
+      RUSTYDB_PASSWORD: ${RUSTYDB_PASSWORD:?Set RUSTYDB_PASSWORD in .env}
+      RUSTYDB_DATA_DIR: /data
+      RUSTYDB_MEMORY_ONLY: "false"
+    volumes:
+      - rustydb_data:/data
+    expose:
+      - "3307"
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  matcharr:
+    image: ghcr.io/ipandral/matcharr:latest
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      rustydb:
+        condition: service_healthy
+    ports:
+      - "${MATCHARR_BIND_ADDRESS:-127.0.0.1}:${MATCHARR_PORT:-5000}:5000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      MATCHARR_SECURE_COOKIES: ${MATCHARR_SECURE_COOKIES:-true}
+      MATCHARR_PUBLIC_URL: ${MATCHARR_PUBLIC_URL:-}
+      RUSTYDB_HOST: rustydb
+      RUSTYDB_WIRE_PORT: 3307
+      RUSTYDB_USERNAME: ${RUSTYDB_USERNAME:-matcharr}
+      RUSTYDB_PASSWORD: ${RUSTYDB_PASSWORD:?Set RUSTYDB_PASSWORD in .env}
+      MEDIA_SERVER_TYPE: ${MEDIA_SERVER_TYPE:-plex}
+      PLEX_URL: ${PLEX_URL:-}
+      PLEX_TOKEN: ${PLEX_TOKEN:-}
+      PLEX_LIBRARY_ID: ${PLEX_LIBRARY_ID:-1}
+      PLEX_LIBRARY_NAME: ${PLEX_LIBRARY_NAME:-Movies}
+      PLEX_TIMEOUT: ${PLEX_TIMEOUT:-10}
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYFIN_USER_ID: ${JELLYFIN_USER_ID:-}
+      JELLYFIN_LIBRARY_ID: ${JELLYFIN_LIBRARY_ID:-}
+      JELLYFIN_LIBRARY_NAME: ${JELLYFIN_LIBRARY_NAME:-Movies}
+      JELLYFIN_TIMEOUT: ${JELLYFIN_TIMEOUT:-10}
+      MATCHARR_AUTO_SYNC: ${MATCHARR_AUTO_SYNC:-true}
+      MATCHARR_INVITE_CODE_LENGTH: ${MATCHARR_INVITE_CODE_LENGTH:-8}
+      MATCHARR_SWIPE_DISTANCE_THRESHOLD: ${MATCHARR_SWIPE_DISTANCE_THRESHOLD:-100}
+      MATCHARR_SWIPE_VELOCITY_THRESHOLD: ${MATCHARR_SWIPE_VELOCITY_THRESHOLD:-0.5}
+      MATCHARR_TRANSACTION_RETRIES: ${MATCHARR_TRANSACTION_RETRIES:-3}
+      MATCHARR_INVITE_ATTEMPTS: ${MATCHARR_INVITE_ATTEMPTS:-8}
+      MATCHARR_INVITE_WINDOW_SECONDS: ${MATCHARR_INVITE_WINDOW_SECONDS:-300}
+      MATCHARR_POLL_INTERVAL_MS: ${MATCHARR_POLL_INTERVAL_MS:-4000}
+      MATCHARR_MAX_REQUEST_BYTES: ${MATCHARR_MAX_REQUEST_BYTES:-1048576}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  rustydb_data:

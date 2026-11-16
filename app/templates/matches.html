@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Matches — Matcharr{% endblock %}
+{% block content %}
+<section class="page-shell" {% if session_results %}id="results-app" data-room-id="{{ room_id }}" data-session-id="{{ session_id }}"{% endif %}>
+  <a class="back-link" href="{{ url_for('rooms.room_page', room_id=room_id) }}">← {{ membership.room_name }}</a>
+  <div class="page-heading"><div>
+    <p class="eyebrow">{{ "Session complete" if session_results else "Shared favourites" }}</p>
+    <h1>{{ "Your final matches" if session_results else "Your matches" }}</h1>
+    {% if session_results %}<p>Everyone has finished choosing. Here’s what you agreed on.</p>{% endif %}
+  </div></div>
+  {% if session_results and result.winner %}
+    <div id="winner-banner" class="active-banner"><div><span class="pulse"></span><strong>Tonight’s winner: {{ result.winner.title }}</strong><p>The final vote is complete.</p></div></div>
+  {% elif session_results and matches %}
+    <p id="final-vote-progress">{{ result.votes_cast }} of {{ result.eligible_members }} final votes cast. Choose the movie you most want to watch.</p>
+  {% endif %}
+  {% if matches %}
+    <div class="match-grid">
+      {% for match in matches %}
+        <article class="match-tile" data-match-id="{{ match.id }}">
+          <a href="{{ url_for('rooms.match_page', room_id=room_id, match_id=match.id) }}">
+            <div class="rank-badge">#{{ loop.index }}</div>
+            <img src="{{ url_for('plex.poster', movie_id=match.movie_id) }}" alt="">
+            <div><h2>{{ match.title }}</h2><p>{{ match.release_year or "" }} · ★ {{ match.audience_rating or "—" }}</p></div>
+          </a>
+          {% if session_results %}
+            <button class="button button-secondary final-vote-button" type="button" data-match-id="{{ match.id }}">
+              <span class="vote-label">{{ "Your pick" if result.current_vote == match.id else "Vote for this" }}</span>
+              · <span class="vote-count">{{ match.final_votes }}</span>
+            </button>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state"><span aria-hidden="true">♥</span><h2>{{ "No matches this time" if session_results else "No matches yet" }}</h2><p>{{ "The session is complete, but there were no unanimous picks." if session_results else "Keep swiping until everyone agrees." }}</p></div>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+  {% if session_results %}
+  <script src="{{ url_for('static', filename='js/api.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/results.js') }}" defer></script>
+  {% endif %}
+{% endblock %}

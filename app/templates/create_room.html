@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Create a room — Matcharr{% endblock %}
+{% block content %}
+<section class="form-page">
+  <a class="back-link" href="{{ url_for('rooms.dashboard') }}">← Your rooms</a>
+  <div class="form-card">
+    <p class="eyebrow">New watch party</p>
+    <h1>Create a room</h1>
+    <p>You’ll become the owner and receive an invite code to share.</p>
+    <form action="{{ url_for('rooms.create_action') }}" method="post" class="stacked-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="name">Room name</label>
+      <input id="name" name="name" maxlength="80" required placeholder="Friday movie night">
+      <label class="check-row">
+        <input type="checkbox" name="include_watched">
+        <span><strong>Include watched movies</strong><small>Let previously watched {{ media_server_name }} titles enter the pool.</small></span>
+      </label>
+      <button class="button button-primary button-wide" type="submit">Create room</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

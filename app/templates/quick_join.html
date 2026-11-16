@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Quick join — Matcharr{% endblock %}
+{% block content %}
+<section class="form-page">
+  <div class="form-card">
+    <p class="eyebrow">Quick join</p>
+    {% if room %}
+      <h1>Join {{ room.name }}</h1>
+      <p>Choose the name everyone in this room will see.</p>
+      {% if error %}<p class="inline-error" role="alert">{{ error }}</p>{% endif %}
+      <form action="{{ url_for('rooms.quick_join', invite_code=invite_code) }}" method="post" class="stacked-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="display_name">Display name</label>
+        <input id="display_name" name="display_name" maxlength="40" autocomplete="nickname" required autofocus value="{{ display_name or '' }}" placeholder="Your display name">
+        <button class="button button-primary button-wide" type="submit">Join room</button>
+      </form>
+    {% else %}
+      <h1>Invite unavailable</h1>
+      <p class="inline-error" role="alert">{{ error }}</p>
+      <a class="button button-secondary button-wide" href="{{ url_for('identity.index') }}">Open Matcharr</a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

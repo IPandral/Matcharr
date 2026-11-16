@@ -1,0 +1,8 @@
+{
+  "name": "matcharr",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/javascript/*.test.js"
+  }
+}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Swipe — Matcharr{% endblock %}
+{% block body_class %}swipe-body{% endblock %}
+{% block content %}
+<section id="swipe-app" class="swipe-app"
+  data-room-id="{{ room_id }}"
+  data-session-id="{{ session_id }}"
+  data-initial-match-ids="{{ initial_match_ids | tojson | forceescape }}"
+  data-poll-interval="{{ poll_interval }}"
+  data-distance-threshold="{{ swipe_distance }}"
+  data-velocity-threshold="{{ swipe_velocity }}">
+  <header class="swipe-header">
+    <a class="back-link" href="{{ url_for('rooms.room_page', room_id=room_id) }}">← Room</a>
+    <div class="swipe-progress"><span class="pulse" aria-hidden="true"></span><span id="progress-label">Loading pool…</span></div>
+    <a class="inline-link" href="{{ url_for('rooms.matches_page', room_id=room_id) }}">Matches</a>
+  </header>
+  <div class="swipe-layout">
+    <aside class="swipe-aside panel" aria-label="Controls">
+      <p class="eyebrow">How to vote</p>
+      <h2>Your pick, privately</h2>
+      <dl class="shortcut-list">
+        <div><dt>←</dt><dd>Skip</dd></div>
+        <div><dt>→</dt><dd>Like</dd></div>
+        <div><dt>↵</dt><dd>Details</dd></div>
+      </dl>
+      <p>Everyone votes independently. A match appears only when every eligible member likes the same movie.</p>
+    </aside>
+    <div class="card-stage" id="card-stage">
+      <div id="loading-card" class="loading-card" role="status">Loading your next movie…</div>
+    </div>
+    <aside class="swipe-aside panel member-progress" aria-label="Room progress">
+      <p class="eyebrow">Room status</p>
+      <h2>Still choosing</h2>
+      <ul id="member-progress-list"><li>Loading members…</li></ul>
+    </aside>
+  </div>
+  <div class="swipe-actions">
+    <button id="skip-button" class="decision-button skip-button" type="button" disabled><span aria-hidden="true">×</span> Skip</button>
+    <button id="details-button" class="details-button" type="button" disabled>Movie details</button>
+    <button id="like-button" class="decision-button like-button" type="button" disabled><span aria-hidden="true">♥</span> Like</button>
+  </div>
+  <div class="group-stop">
+    <button id="undo-button" class="text-button" type="button" disabled>Undo last swipe</button>
+    <span aria-hidden="true">·</span>
+    <button id="finish-vote-button" class="text-button" type="button">Vote to stop this session</button>
+    <span id="finish-vote-status">Everyone must agree.</span>
+  </div>
+  <p id="live-status" class="sr-only" aria-live="assertive"></p>
+</section>
+<dialog id="movie-dialog" class="movie-dialog">
+  <button id="dialog-close" class="dialog-close" type="button" aria-label="Close movie details">×</button>
+  <div id="dialog-content"></div>
+</dialog>
+<dialog id="match-notification-dialog" class="match-notification-dialog">
+  <div class="match-notification-copy">
+    <p class="eyebrow">Everyone said yes</p>
+    <h2>It’s a match!</h2>
+    <img id="match-notification-poster" alt="">
+    <h3 id="match-notification-title"></h3>
+    <p id="match-notification-year"></p>
+    <div class="button-row">
+      <button id="match-continue-button" class="button button-primary" type="button">Continue swiping</button>
+      <button id="match-stop-button" class="button button-secondary" type="button">Vote to stop</button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/api.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/swipe-logic.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/swipe.js') }}" defer></script>
+{% endblock %}

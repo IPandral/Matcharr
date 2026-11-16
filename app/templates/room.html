@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}{{ membership.room_name }} — Matcharr{% endblock %}
+{% block content %}
+<section class="page-shell room-page" data-room-id="{{ room_id }}"
+  {% if lobby %}data-lobby-id="{{ lobby.id }}"{% endif %}>
+  <a class="back-link" href="{{ url_for('rooms.dashboard') }}">← Your rooms</a>
+  <div class="room-hero">
+    <div>
+      <p class="eyebrow">{{ "Room owner" if membership.role == "owner" else "Room member" }}</p>
+      <h1>{{ membership.room_name }}</h1>
+      <p>{{ members|selectattr("is_active")|list|length }} active member{% if members|selectattr("is_active")|list|length != 1 %}s{% endif %}</p>
+    </div>
+    <div class="invite-code-card">
+      <small>Invite code</small>
+      <strong>{{ membership.invite_code }}</strong>
+      <span>Share this privately</span>
+    </div>
+  </div>
+
+  <section class="panel quick-invite-card">
+    <img src="{{ url_for('rooms.invite_qr', room_id=room_id) }}" alt="QR code for joining {{ membership.room_name }}">
+    <div>
+      <p class="eyebrow">Quick join</p>
+      <h2>Scan, choose a name, and join</h2>
+      <p>No invite code typing required.</p>
+      <label class="sr-only" for="quick-join-url">Quick join link</label>
+      <div class="field-action">
+        <input id="quick-join-url" value="{{ quick_join_url }}" readonly>
+        <button id="copy-quick-join" class="button button-secondary" type="button">Copy link</button>
+      </div>
+    </div>
+  </section>
+
+  {% if active_session %}
+    <section class="active-banner">
+      <div><span class="pulse" aria-hidden="true"></span><strong>Selection in progress</strong><p>The voter list and movie pool are frozen.</p></div>
+      <a class="button button-primary" href="{{ url_for('rooms.swipe_page', room_id=room_id, session_id=active_session.id) }}">Keep swiping</a>
+    </section>
+  {% elif lobby %}
+    {% set ready_count = lobby_members|selectattr("is_ready")|list|length %}
+    <section class="panel lobby-panel">
+      <div class="section-heading"><h2>Session lobby</h2><span id="lobby-ready-count">{{ ready_count }}/{{ lobby_members|length }} ready</span></div>
+      <p>Search the synced {{ media_server_name }} library and add bonus movies. Adding another suggestion marks you unready again.</p>
+      <div class="lobby-grid">
+        <div>
+          <label for="suggestion-search">Suggest a {{ media_server_name }} movie</label>
+          <input id="suggestion-search" autocomplete="off" placeholder="Try “Grown Ups”">
+          <div id="suggestion-results" class="suggestion-results"></div>
+          <h3>Bonus picks</h3>
+          <ul id="lobby-suggestions" class="suggestion-list">
+            {% for suggestion in suggestions %}
+              <li><strong>{{ suggestion.title }}</strong> <span>{{ suggestion.release_year or "" }}</span></li>
+            {% else %}
+              <li class="is-muted">No bonus movies yet.</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h3>Ready check</h3>
+          <ul id="lobby-member-list" class="member-list">
+            {% for member in lobby_members %}
+              <li><span class="avatar">{{ member.display_name[0]|upper }}</span><div><strong>{{ member.display_name }}</strong><small>{{ "Ready" if member.is_ready else "Adding suggestions" }}</small></div></li>
+            {% endfor %}
+          </ul>
+          <button id="lobby-ready-button" class="button button-secondary button-wide" type="button">I’m ready</button>
+          {% if membership.role == "owner" %}
+            <form action="{{ url_for('rooms.launch_lobby_action', room_id=room_id, lobby_id=lobby.id) }}" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button id="launch-lobby-button" class="button button-primary button-wide" type="submit" {% if ready_count != lobby_members|length %}disabled{% endif %}>Start for everyone</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+  {% elif membership.role == "owner" %}
+    <section class="panel">
+      <div class="section-heading"><h2>Start a selection</h2><span>Owner</span></div>
+      <form action="{{ url_for('rooms.start_session_action', room_id=room_id) }}" method="post" class="filter-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Include genres<input name="genres" value="{{ default_filters.get('genres', [])|join(', ') }}" placeholder="Comedy, Drama"></label>
+        <label>Exclude genres<input name="excluded_genres" value="{{ default_filters.get('excluded_genres', [])|join(', ') }}" placeholder="Horror"></label>
+        <label>Minimum rating<input name="minimum_audience_rating" value="{{ default_filters.get('minimum_audience_rating') or '' }}" type="number" min="0" max="10" step="0.1" placeholder="7.0"></label>
+        <label>Maximum runtime<input name="maximum_runtime" value="{{ default_filters.get('maximum_runtime') or '' }}" type="number" min="1" placeholder="150"></label>
+        <label>Earliest year<input name="earliest_release_year" value="{{ default_filters.get('earliest_release_year') or '' }}" type="number" min="1888" max="2200" placeholder="1990"></label>
+        <label>Latest year<input name="latest_release_year" value="{{ default_filters.get('latest_release_year') or '' }}" type="number" min="1888" max="2200" placeholder="2026"></label>
+        <label>Feed<select name="feed" data-feed-select>{% for value, label in [('mixed', 'Weighted mix'), ('combined', 'Combined discovery'), ('recent', 'Recently added'), ('popular', 'Popular'), ('rated', 'Highly rated'), ('unwatched', 'Unwatched')] %}<option value="{{ value }}" {% if default_filters.get('feed', 'mixed') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Pool size<input name="candidate_pool_size" type="number" min="1" max="500" value="{{ default_filters.get('candidate_pool_size', 50) }}"></label>
+        <fieldset class="mix-controls" data-mix-controls>
+          <legend>Weighted movie mix</legend>
+          <p>Set a wider discovery range. Values are relative and normalize automatically.</p>
+          <label>Recently added <span><output data-mix-output>{{ default_filters.get('mix_recently_added', 25) }}</output>%</span><input name="mix_recently_added" type="range" min="0" max="100" step="5" value="{{ default_filters.get('mix_recently_added', 25) }}"></label>
+          <label>Recently released <span><output data-mix-output>{{ default_filters.get('mix_recently_released', 25) }}</output>%</span><input name="mix_recently_released" type="range" min="0" max="100" step="5" value="{{ default_filters.get('mix_recently_released', 25) }}"></label>
+          <label>Random <span><output data-mix-output>{{ default_filters.get('mix_random', 50) }}</output>%</span><input name="mix_random" type="range" min="0" max="100" step="5" value="{{ default_filters.get('mix_random', 50) }}"></label>
+          <strong class="mix-total" data-mix-total aria-live="polite"></strong>
+        </fieldset>
+        <button class="button button-primary" type="submit">Create lobby</button>
+      </form>
+    </section>
+  {% else %}
+    <section class="waiting-state">
+      <span class="orbit" aria-hidden="true"></span>
+      <h2>Waiting for the owner</h2>
+      <p>This page updates when a selection session begins.</p>
+    </section>
+  {% endif %}
+
+  <div class="room-columns">
+    <section class="panel">
+      <div class="section-heading"><h2>Members</h2><span>{{ members|length }}</span></div>
+      <ul class="member-list">
+        {% for member in members %}
+          <li class="{% if not member.is_active %}is-muted{% endif %}">
+            <span class="avatar" aria-hidden="true">{{ member.display_name[0]|upper }}</span>
+            <div><strong>{{ member.display_name }}</strong><small>{{ member.role|title }} · {{ "Active" if member.is_active else "Inactive" }}</small></div>
+            {% if membership.role == "owner" and member.role != "owner" and member.is_active %}
+              <form action="{{ url_for('rooms.remove_member_action', room_id=room_id, member_id=member.id) }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% if active_session %}<input type="hidden" name="remove_from_session" value="on">{% endif %}
+                <button class="text-button" type="submit">{% if active_session %}Remove from room & session{% else %}Remove{% endif %}</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><h2>{{ media_server_name }} library</h2><span>Cached</span></div>
+      <p>Sync metadata manually when your {{ media_server_name }} library changes. Existing cached titles remain usable if {{ media_server_name }} is offline.</p>
+      <form action="{{ url_for('plex.sync_action') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="button button-secondary" type="submit">Sync {{ media_server_name }} now</button>
+      </form>
+      <a class="inline-link" href="{{ url_for('rooms.matches_page', room_id=room_id) }}">View past matches →</a>
+    </section>
+    {% if membership.role == "owner" %}
+    <details class="panel settings-panel">
+      <summary>Room defaults</summary>
+      <p>These values apply to future sessions only. The active session stays frozen.</p>
+      <form action="{{ url_for('rooms.settings_action', room_id=room_id) }}" method="post" class="filter-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Room name<input name="name" maxlength="80" value="{{ membership.room_name }}" required></label>
+        <label>Include genres<input name="genres" value="{{ default_filters.get('genres', [])|join(', ') }}" placeholder="Comedy, Drama"></label>
+        <label>Exclude genres<input name="excluded_genres" value="{{ default_filters.get('excluded_genres', [])|join(', ') }}" placeholder="Horror"></label>
+        <label>Minimum rating<input name="minimum_audience_rating" value="{{ default_filters.get('minimum_audience_rating') or '' }}" type="number" min="0" max="10" step="0.1"></label>
+        <label>Maximum runtime<input name="maximum_runtime" value="{{ default_filters.get('maximum_runtime') or '' }}" type="number" min="1"></label>
+        <label>Earliest year<input name="earliest_release_year" value="{{ default_filters.get('earliest_release_year') or '' }}" type="number" min="1888" max="2200"></label>
+        <label>Latest year<input name="latest_release_year" value="{{ default_filters.get('latest_release_year') or '' }}" type="number" min="1888" max="2200"></label>
+        <label>Default feed<select name="feed" data-feed-select>{% for value, label in [('mixed', 'Weighted mix'), ('combined', 'Combined discovery'), ('recent', 'Recently added'), ('popular', 'Popular'), ('rated', 'Highly rated'), ('unwatched', 'Unwatched')] %}<option value="{{ value }}" {% if default_filters.get('feed', 'mixed') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Default pool size<input name="candidate_pool_size" type="number" min="1" max="500" value="{{ default_filters.get('candidate_pool_size', 50) }}"></label>
+        <fieldset class="mix-controls" data-mix-controls>
+          <legend>Default weighted mix</legend>
+          <p>Values are relative and normalize automatically.</p>
+          <label>Recently added <span><output data-mix-output>{{ default_filters.get('mix_recently_added', 25) }}</output>%</span><input name="mix_recently_added" type="range" min="0" max="100" step="5" value="{{ default_filters.get('mix_recently_added', 25) }}"></label>
+          <label>Recently released <span><output data-mix-output>{{ default_filters.get('mix_recently_released', 25) }}</output>%</span><input name="mix_recently_released" type="range" min="0" max="100" step="5" value="{{ default_filters.get('mix_recently_released', 25) }}"></label>
+          <label>Random <span><output data-mix-output>{{ default_filters.get('mix_random', 50) }}</output>%</span><input name="mix_random" type="range" min="0" max="100" step="5" value="{{ default_filters.get('mix_random', 50) }}"></label>
+          <strong class="mix-total" data-mix-total aria-live="polite"></strong>
+        </fieldset>
+        <label class="check-row"><input type="checkbox" name="include_watched" {% if membership.include_watched %}checked{% endif %}><span><strong>Include watched</strong></span></label>
+        <button class="button button-secondary" type="submit">Save defaults</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% if recent_sessions %}
+    <section class="panel session-history">
+      <div class="section-heading"><h2>Recent sessions</h2><span>Removed after 24 hours</span></div>
+      <ul class="member-list">
+        {% for item in recent_sessions %}
+          <li>
+            <div><strong>{{ item.status|title }} session</strong><small>{{ item.started_at }}</small></div>
+            {% if item.status == "completed" %}<a class="inline-link" href="{{ url_for('rooms.matches_page', room_id=room_id, session_id=item.id) }}">Results</a>{% endif %}
+            {% if membership.role == "owner" %}
+              <form action="{{ url_for('rooms.delete_session_action', room_id=room_id, session_id=item.id) }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="text-button danger" type="submit">Delete</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+  <section class="danger-zone">
+    {% if membership.role == "owner" %}
+      <form action="{{ url_for('rooms.archive_action', room_id=room_id) }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="text-button danger" type="submit">Archive room</button>
+      </form>
+    {% else %}
+      <form action="{{ url_for('rooms.leave_action', room_id=room_id) }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="text-button danger" type="submit">Leave room</button>
+      </form>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/api.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/room-status.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/pool-mix.js') }}" defer></script>
+{% endblock %}

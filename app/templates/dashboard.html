@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Your rooms — Matcharr{% endblock %}
+{% block content %}
+<section class="page-shell">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">Welcome back</p>
+      <h1>Ready, {{ display_name }}?</h1>
+      <p>Start a new room or return to a group you’ve already joined.</p>
+    </div>
+    <div class="button-row">
+      <a class="button button-primary" href="{{ url_for('rooms.create_page') }}">Create room</a>
+      <a class="button button-secondary" href="{{ url_for('rooms.join_page') }}">Join room</a>
+    </div>
+  </div>
+  <section aria-labelledby="rooms-title">
+    <div class="section-heading">
+      <h2 id="rooms-title">Your rooms</h2>
+      <span>{{ rooms|length }}</span>
+    </div>
+    {% if rooms %}
+      <div class="room-grid">
+        {% for room in rooms %}
+          <a class="room-tile {% if room.is_archived %}is-muted{% endif %}" href="{{ url_for('rooms.room_page', room_id=room.id) if room.is_active else '#' }}">
+            <span class="room-icon" aria-hidden="true">{{ room.name[0]|upper }}</span>
+            <div>
+              <h3>{{ room.name }}</h3>
+              <p>{{ room.role|title }} · {{ "Archived" if room.is_archived else ("Active" if room.is_active else "Left") }}</p>
+            </div>
+            <span class="tile-arrow" aria-hidden="true">→</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <span aria-hidden="true">✦</span>
+        <h3>No rooms yet</h3>
+        <p>Create one and share its invite code, or ask a friend for theirs.</p>
+      </div>
+    {% endif %}
+  </section>
+  <details class="settings-panel">
+    <summary>Change display name</summary>
+    <form action="{{ url_for('identity.change_name') }}" method="post" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="sr-only" for="new_name">New display name</label>
+      <input id="new_name" name="display_name" maxlength="40" value="{{ display_name }}" required>
+      <button class="button button-secondary" type="submit">Save</button>
+    </form>
+    <p class="fine-print">Clearing browser cookies can remove access to your previous anonymous identity.</p>
+  </details>
+</section>
+{% endblock %}
+

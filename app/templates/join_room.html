@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Join a room — Matcharr{% endblock %}
+{% block content %}
+<section class="form-page">
+  <a class="back-link" href="{{ url_for('rooms.dashboard') }}">← Your rooms</a>
+  <div class="form-card">
+    <p class="eyebrow">You’re invited</p>
+    <h1>Join a room</h1>
+    <p>Invite codes ignore case and avoid easy-to-confuse characters.</p>
+    <form action="{{ url_for('rooms.join_action') }}" method="post" class="stacked-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="invite_code">Invite code</label>
+      <input class="invite-input" id="invite_code" name="invite_code" maxlength="16" required autocapitalize="characters" autocomplete="off" placeholder="ABCD2345">
+      <button class="button button-primary button-wide" type="submit">Join room</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}It’s a match — Matcharr{% endblock %}
+{% block body_class %}match-body{% endblock %}
+{% block content %}
+<section class="match-screen">
+  <div class="match-glow" aria-hidden="true"></div>
+  <p class="eyebrow">Everyone said yes</p>
+  <h1>It’s a match!</h1>
+  <div class="match-feature">
+    <img src="{{ url_for('plex.poster', movie_id=match.movie_id) }}" alt="Poster for {{ match.title }}">
+    <div>
+      <p class="match-kicker">Tonight’s movie</p>
+      <h2>{{ match.title }}</h2>
+      <p>{{ match.release_year or "" }}</p>
+      <p>Liked by {{ match.members|map(attribute='display_name')|join(', ') }}</p>
+      <div class="button-row">
+        {% if match.plex_watch_url %}<a class="button button-primary" href="{{ match.plex_watch_url }}">Open in {{ media_server_name }}</a>{% endif %}
+        {% if active_session %}<a class="button button-secondary" href="{{ url_for('rooms.swipe_page', room_id=room_id, session_id=active_session.id) }}">Continue swiping</a>{% endif %}
+      </div>
+      {% if membership.role == "owner" and active_session %}
+        <form action="{{ url_for('rooms.finish_session_action', room_id=room_id, session_id=active_session.id) }}" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="text-button" type="submit">Finish this session</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
