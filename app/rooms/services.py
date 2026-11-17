@@ -167,14 +167,17 @@ def list_rooms(database, participant_id: str) -> list[dict]:
     )
 
 
-def room_details(database, room_id: str, participant_id: str) -> dict:
-    cleanup_expired_sessions(database)
-    membership = get_membership(database, room_id, participant_id)
-    members = database.fetch_all(
+def list_room_members(database, room_id: str) -> list[dict]:
+    return database.fetch_all(
         "SELECT id, participant_id, display_name, role, is_active, joined_at "
         "FROM room_members WHERE room_id = %s ORDER BY joined_at ASC",
         (room_id,),
     )
+
+
+def room_live_details(database, room_id: str, participant_id: str) -> dict:
+    membership = get_membership(database, room_id, participant_id)
+    members = list_room_members(database, room_id)
     active_session = database.fetch_one(
         "SELECT id, status, filters_json, started_at FROM selection_sessions "
         "WHERE room_id = %s AND status = 'active' ORDER BY started_at DESC LIMIT 1",
@@ -198,15 +201,6 @@ def room_details(database, room_id: str, participant_id: str) -> dict:
             "WHERE ls.lobby_id = %s ORDER BY ls.created_at ASC",
             (lobby["id"],),
         )
-    recent_sessions = database.fetch_all(
-        "SELECT id, status, started_at, completed_at FROM selection_sessions "
-        "WHERE room_id = %s ORDER BY started_at DESC",
-        (room_id,),
-    )
-    try:
-        default_filters = json.loads(membership.get("default_filters_json") or "{}")
-    except (TypeError, json.JSONDecodeError):
-        default_filters = {}
     return {
         "membership": membership,
         "members": members,
@@ -214,9 +208,24 @@ def room_details(database, room_id: str, participant_id: str) -> dict:
         "lobby": lobby,
         "lobby_members": lobby_members,
         "suggestions": suggestions,
-        "recent_sessions": recent_sessions,
-        "default_filters": default_filters,
     }
+
+
+def room_details(database, room_id: str, participant_id: str) -> dict:
+    cleanup_expired_sessions(database)
+    details = room_live_details(database, room_id, participant_id)
+    details["recent_sessions"] = database.fetch_all(
+        "SELECT id, status, started_at, completed_at FROM selection_sessions "
+        "WHERE room_id = %s ORDER BY started_at DESC",
+        (room_id,),
+    )
+    try:
+        details["default_filters"] = json.loads(
+            details["membership"].get("default_filters_json") or "{}"
+        )
+    except (TypeError, json.JSONDecodeError):
+        details["default_filters"] = {}
+    return details
 
 
 def leave_room(database, room_id: str, participant_id: str, retries: int = 3) -> None:

@@ -20,7 +20,10 @@ from .services import (
     ConflictError,
     NotFoundError,
     add_lobby_suggestion,
+    get_membership,
+    list_room_members,
     room_details,
+    room_live_details,
     search_lobby_movies,
     set_lobby_ready,
 )
@@ -40,25 +43,41 @@ def _error(message, status):
     return jsonify(success=False, error=message), status
 
 
+@bp.after_request
+def prevent_cached_reads(response):
+    if request.method == "GET":
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @bp.get("/rooms/<room_id>/status")
 def status(room_id):
-    if not _participant_id():
+    participant_id = _participant_id()
+    if not participant_id:
         return _error("Identity required.", 401)
-    try:
-        details = room_details(_db(), room_id, _participant_id())
-    except AuthorizationError as error:
-        return _error(str(error), 403)
-    active = details["active_session"]
-    matches = []
-    progress = None
-    if active:
-        matches = session_matches(_db(), room_id, active["id"], _participant_id())
+    with _db().connection() as connection:
         try:
-            progress = session_progress(
-                _db(), room_id, active["id"], _participant_id()
+            details = room_live_details(connection, room_id, participant_id)
+            active = details["active_session"]
+            matches = (
+                session_matches(connection, room_id, active["id"], participant_id)
+                if active else []
             )
-        except AuthorizationError:
-            progress = None
+        except AuthorizationError as error:
+            return _error(str(error), 403)
+        progress = None
+        if active:
+            try:
+                progress = session_progress(connection, room_id, active["id"], participant_id)
+            except AuthorizationError:
+                pass
+        tracked_session_id = request.args.get("session_id")
+        tracked_session = None
+        if tracked_session_id and (not active or active["id"] != tracked_session_id):
+            tracked_session = connection.fetch_one(
+                "SELECT id, status FROM selection_sessions WHERE id = %s AND room_id = %s",
+                (tracked_session_id, room_id),
+            )
     return jsonify(
         room_id=room_id,
         session=active,
@@ -71,6 +90,7 @@ def status(room_id):
         lobby=details["lobby"],
         lobby_members=details["lobby_members"],
         suggestions=details["suggestions"],
+        tracked_session=tracked_session,
     )
 
 
@@ -116,28 +136,27 @@ def _match_payload(match, room_id):
 
 @bp.get("/rooms/<room_id>/sessions/<session_id>/status")
 def session_status_api(room_id, session_id):
-    if not _participant_id():
+    participant_id = _participant_id()
+    if not participant_id:
         return _error("Identity required.", 401)
-    try:
-        details = room_details(_db(), room_id, _participant_id())
-    except AuthorizationError as error:
-        return _error(str(error), 403)
-    session_row = _db().fetch_one(
-        "SELECT id, status, started_at, completed_at FROM selection_sessions "
-        "WHERE id = %s AND room_id = %s",
-        (session_id, room_id),
-    )
-    if not session_row:
-        return _error("Session not found.", 404)
-    try:
-        progress = session_progress(
-            _db(), room_id, session_id, _participant_id()
+    with _db().connection() as connection:
+        try:
+            get_membership(connection, room_id, participant_id)
+        except AuthorizationError as error:
+            return _error(str(error), 403)
+        session_row = connection.fetch_one(
+            "SELECT id, status, started_at, completed_at FROM selection_sessions "
+            "WHERE id = %s AND room_id = %s",
+            (session_id, room_id),
         )
-        matches = session_matches(
-            _db(), room_id, session_id, _participant_id()
-        )
-    except AuthorizationError as error:
-        return _error(str(error), 403)
+        if not session_row:
+            return _error("Session not found.", 404)
+        try:
+            progress = session_progress(connection, room_id, session_id, participant_id)
+            matches = session_matches(connection, room_id, session_id, participant_id)
+        except AuthorizationError as error:
+            return _error(str(error), 403)
+        room_members = list_room_members(connection, room_id)
     return jsonify(
         session=session_row,
         progress=progress,
@@ -148,7 +167,7 @@ def session_status_api(room_id, session_id):
                 "role": row["role"],
                 "active": bool(row["is_active"]),
             }
-            for row in details["members"]
+            for row in room_members
         ],
     )
 
@@ -190,11 +209,6 @@ def swipe_api(room_id, session_id):
             idempotency_key,
             current_app.config["MATCHARR_TRANSACTION_RETRIES"],
         )
-        following = (
-            None
-            if result["session_completed"]
-            else next_movie(_db(), room_id, session_id, _participant_id())
-        )
     except ValueError as error:
         return _error(str(error), 400)
     except AuthorizationError as error:
@@ -203,14 +217,16 @@ def swipe_api(room_id, session_id):
         return _error(str(error), 404)
     except ConflictError as error:
         return _error(str(error), 409)
+    with _db().connection() as connection:
+        progress = session_progress(connection, room_id, session_id, _participant_id())
     response = {
         "success": True,
         "matched": result["matched"],
-        "session_completed": result["session_completed"],
-        "next_movie_available": following is not None,
-        "progress": session_progress(
-            _db(), room_id, session_id, _participant_id()
+        "session_completed": result["session_completed"] or progress["session_status"] == "completed",
+        "next_movie_available": (
+            progress["session_status"] == "active" and progress["remaining"] > 0
         ),
+        "progress": progress,
     }
     if result["matched"]:
         details = _db().fetch_one(
@@ -328,7 +344,8 @@ def session_results_api(room_id, session_id):
     if not _participant_id():
         return _error("Identity required.", 401)
     try:
-        result = session_results(_db(), room_id, session_id, _participant_id())
+        with _db().connection() as connection:
+            result = session_results(connection, room_id, session_id, _participant_id())
     except AuthorizationError as error:
         return _error(str(error), 403)
     return jsonify(**result)

@@ -35,6 +35,9 @@ class ScriptedDB:
     def transaction(self):
         yield self.connection_object
 
+    def connection(self):
+        return self.transaction()
+
     def execute(self, query, parameters=None):
         return self.connection_object.execute(query, parameters)
 

@@ -8,7 +8,8 @@
   const sessionId = app.dataset.sessionId;
   const distanceThreshold = Number(app.dataset.distanceThreshold || 100);
   const velocityThreshold = Number(app.dataset.velocityThreshold || 0.5);
-  const pollInterval = Number(app.dataset.pollInterval || 4000);
+  const pollInterval = Number(app.dataset.pollInterval);
+  const sessionApi = `/api/rooms/${roomId}/sessions/${sessionId}`;
   const stage = document.getElementById("card-stage");
   const skipButton = document.getElementById("skip-button");
   const likeButton = document.getElementById("like-button");
@@ -34,73 +35,70 @@
   let pointer = null;
   let frame = null;
   let latestX = 0;
-  const seenMatches = new Set(JSON.parse(app.dataset.initialMatchIds || "[]"));
+  const acknowledgmentKey = `matcharr:matches:${app.dataset.membershipId}:${sessionId}`;
+  const acknowledgedMatches = new Set();
+  try {
+    for (const id of JSON.parse(window.sessionStorage.getItem(acknowledgmentKey) || "[]")) {
+      acknowledgedMatches.add(id);
+    }
+  } catch (_) {
+    // Match notifications still work when browser storage is unavailable.
+  }
+  const seenMatches = new Set(acknowledgedMatches);
   const matchQueue = [];
   let currentMatchNotification = null;
   let sessionCompleted = false;
+  let undoPending = false;
+  let statusWatch;
 
-  function resultsUrl() {
-    return `/rooms/${roomId}/matches?session_id=${encodeURIComponent(sessionId)}`;
+  function leaveSession(url) {
+    if (sessionCompleted) return;
+    sessionCompleted = true;
+    setEnabled(false);
+    finishVoteButton.disabled = true;
+    undoButton.disabled = true;
+    statusWatch?.stop();
+    window.location.replace(url);
   }
 
   function finishSessionFlow() {
-    sessionCompleted = true;
-    setEnabled(false);
-    if (currentMatchNotification) {
-      matchContinueButton.textContent = "See all matches";
-      matchStopButton.disabled = true;
-      matchStopButton.textContent = "Session complete";
-    }
-    if (!currentMatchNotification && matchQueue.length === 0) {
-      window.location.assign(resultsUrl());
-    }
+    leaveSession(`/rooms/${roomId}/matches?session_id=${encodeURIComponent(sessionId)}`);
   }
 
   function showNextMatchNotification() {
-    if (currentMatchNotification || matchQueue.length === 0) {
-      if (sessionCompleted && !currentMatchNotification) window.location.assign(resultsUrl());
-      return;
-    }
+    if (sessionCompleted || currentMatchNotification || matchQueue.length === 0) return;
     currentMatchNotification = matchQueue.shift();
-    const match = currentMatchNotification.match;
+    const match = currentMatchNotification;
     matchTitle.textContent = match.title;
     matchYear.textContent = match.release_year || "";
     matchPoster.src = match.poster_url;
     matchPoster.alt = `Poster for ${match.title}`;
-    matchContinueButton.textContent = sessionCompleted ? "See all matches" : "Continue swiping";
-    matchStopButton.disabled = sessionCompleted;
-    matchStopButton.textContent = sessionCompleted ? "Session complete" : "Vote to stop";
+    matchStopButton.disabled = finishVoteButton.disabled;
+    matchStopButton.textContent = matchStopButton.disabled ? finishVoteButton.textContent : "Vote to stop";
+    if (dialog.open) dialog.close();
     matchDialog.showModal();
     announce(`A match has been found: ${match.title}`);
   }
 
-  function queueMatchNotification(match, advanceAfter) {
-    if (seenMatches.has(match.id)) {
-      if (currentMatchNotification?.match.id === match.id) {
-        currentMatchNotification.advanceAfter ||= advanceAfter;
-      } else {
-        const queued = matchQueue.find((item) => item.match.id === match.id);
-        if (queued) queued.advanceAfter ||= advanceAfter;
-      }
-      return;
-    }
+  function queueMatchNotification(match) {
+    if (sessionCompleted || seenMatches.has(match.id)) return;
     seenMatches.add(match.id);
-    matchQueue.push({ match, advanceAfter });
+    matchQueue.push(match);
     showNextMatchNotification();
   }
 
-  function dismissMatchNotification(advance = true) {
+  function dismissMatchNotification() {
     const notification = currentMatchNotification;
+    if (!notification) return;
+    acknowledgedMatches.add(notification.id);
+    try {
+      window.sessionStorage.setItem(acknowledgmentKey, JSON.stringify([...acknowledgedMatches]));
+    } catch (_) {
+      // Acknowledgment still applies to the current page.
+    }
     currentMatchNotification = null;
     matchDialog.close();
-    if (matchQueue.length) {
-      showNextMatchNotification();
-    } else if (sessionCompleted) {
-      window.location.assign(resultsUrl());
-    } else if (advance && notification?.advanceAfter) {
-      currentMovie = null;
-      loadNext();
-    }
+    showNextMatchNotification();
   }
 
   function announce(message) {
@@ -152,8 +150,10 @@
     if (progress.current_participant_voted) {
       finishVoteButton.disabled = true;
       finishVoteButton.textContent = "Stop vote submitted";
+      matchStopButton.disabled = true;
+      matchStopButton.textContent = "Stop vote submitted";
     }
-    undoButton.disabled = progress.decided < 1 || progress.session_status !== "active";
+    undoButton.disabled = undoPending || progress.decided < 1 || progress.session_status !== "active";
     if (progress.members) {
       memberList.innerHTML = progress.members
         .map((member) => `<li><span class="avatar">${escapeText(member.display_name.slice(0, 1).toUpperCase())}</span><span><strong>${escapeText(member.display_name)}</strong><small>${member.decided}/${member.total}</small></span></li>`)
@@ -162,13 +162,19 @@
   }
 
   async function loadNext() {
+    if (sessionCompleted) return;
     setEnabled(false);
     announce("Loading next movie");
     stage.innerHTML = '<div class="loading-card" role="status">Loading your next movie…</div>';
     try {
       const payload = await window.MatcharrAPI.get(
-        `/api/rooms/${roomId}/sessions/${sessionId}/next-movie`
+        `${sessionApi}/next-movie`
       );
+      if (sessionCompleted) return;
+      if (payload.progress.session_status === "completed") {
+        finishSessionFlow();
+        return;
+      }
       currentMovie = payload.movie;
       updateProgress(payload.progress);
       if (!currentMovie) {
@@ -182,6 +188,7 @@
       setEnabled(true);
       announce(`${currentMovie.title} ready`);
     } catch (error) {
+      if (sessionCompleted) return;
       stage.innerHTML = `<div class="finished-card"><h1>Couldn’t load a movie</h1><p>${escapeText(error.message)}</p><button class="button button-secondary" id="retry-movie" type="button">Try again</button></div>`;
       document.getElementById("retry-movie")?.addEventListener("click", loadNext);
       announce("Could not load the next movie");
@@ -251,7 +258,7 @@
   }
 
   async function submitDecision(decision, direction) {
-    if (locked || !currentMovie || !card) return;
+    if (locked || undoPending || !currentMovie || !card) return;
     setEnabled(false);
     const movieAtSubmission = currentMovie;
     card.classList.add(direction > 0 ? "fly-right" : "fly-left");
@@ -259,25 +266,25 @@
     try {
       const idempotencyKey = createIdempotencyKey(globalThis.crypto);
       const result = await window.MatcharrAPI.post(
-        `/api/rooms/${roomId}/sessions/${sessionId}/swipes`,
+        `${sessionApi}/swipes`,
         { movie_id: movieAtSubmission.id, decision, idempotency_key: idempotencyKey }
       );
-      await new Promise((resolve) => window.setTimeout(resolve, 280));
-      if (result.matched && result.match) {
-        updateProgress(result.progress);
-        queueMatchNotification(result.match, true);
-        if (result.session_completed) finishSessionFlow();
-        return;
-      }
-      if (result.session_completed) {
-        updateProgress(result.progress);
+      if (sessionCompleted) return;
+      if (result.session_completed || result.progress.session_status === "completed") {
         finishSessionFlow();
         return;
+      }
+      if (result.match) {
+        queueMatchNotification(result.match);
+      } else {
+        await new Promise((resolve) => window.setTimeout(resolve, 280));
+        if (sessionCompleted) return;
       }
       currentMovie = null;
       updateProgress(result.progress);
       await loadNext();
     } catch (error) {
+      if (sessionCompleted) return;
       currentMovie = movieAtSubmission;
       card?.classList.remove("fly-right", "fly-left");
       resetCard();
@@ -298,67 +305,70 @@
     dialog.showModal();
   }
 
-  async function pollStatus() {
-    try {
-      const status = await window.MatcharrAPI.get(
-        `/api/rooms/${roomId}/sessions/${sessionId}/status`
-      );
-      updateProgress(status.progress);
-      for (const match of status.matches || []) {
-        if (!seenMatches.has(match.id)) {
-          queueMatchNotification(match, false);
-        }
-      }
-      if (status.session.status !== "active") finishSessionFlow();
-    } catch (error) {
-      if (error.status === 404) {
-        window.location.assign(`/rooms/${roomId}`);
-        return;
-      }
-      // Polling is best-effort; swiping remains available during brief outages.
+  function renderStatus(status) {
+    if (status.session.status === "completed" || status.progress.session_status === "completed") {
+      finishSessionFlow();
+      return;
     }
+    if (status.session.status !== "active" || status.progress.session_status !== "active") {
+      leaveSession(`/rooms/${roomId}`);
+      return;
+    }
+    updateProgress(status.progress);
+    for (const match of status.matches) queueMatchNotification(match);
   }
 
   async function submitFinishVote() {
     if (finishVoteButton.disabled) return;
     finishVoteButton.disabled = true;
     finishVoteButton.textContent = "Submitting vote…";
+    matchStopButton.disabled = true;
+    matchStopButton.textContent = "Submitting vote…";
     try {
       const result = await window.MatcharrAPI.post(
-        `/api/rooms/${roomId}/sessions/${sessionId}/finish-vote`,
+        `${sessionApi}/finish-vote`,
         {}
       );
+      if (sessionCompleted) return;
       finishVoteStatus.textContent =
         `${result.finish_votes} of ${result.eligible_members} voted to stop`;
       if (result.completed) {
         announce("Everyone agreed to stop this session");
         finishSessionFlow();
-        return true;
+        return;
       }
       finishVoteButton.textContent = "Stop vote submitted";
+      matchStopButton.textContent = "Stop vote submitted";
       announce("Your vote to stop was recorded");
-      return false;
     } catch (error) {
+      if (sessionCompleted) return;
       finishVoteButton.disabled = false;
       finishVoteButton.textContent = "Vote to stop this session";
+      matchStopButton.disabled = false;
+      matchStopButton.textContent = "Vote to stop";
       announce(error.message);
-      return false;
+      statusWatch.refresh();
     }
   }
 
   async function undoLastSwipe() {
     if (undoButton.disabled) return;
+    undoPending = true;
     undoButton.disabled = true;
     try {
       const result = await window.MatcharrAPI.post(
-        `/api/rooms/${roomId}/sessions/${sessionId}/undo`,
+        `${sessionApi}/undo`,
         {}
       );
+      if (sessionCompleted) return;
+      undoPending = false;
       currentMovie = null;
       updateProgress(result.progress);
       announce(`Undid your last ${result.undone.decision}`);
       await loadNext();
     } catch (error) {
+      undoPending = false;
+      if (sessionCompleted) return;
       announce(error.message);
       undoButton.disabled = false;
     }
@@ -369,14 +379,15 @@
   detailsButton.addEventListener("click", openDetails);
   finishVoteButton.addEventListener("click", submitFinishVote);
   undoButton.addEventListener("click", undoLastSwipe);
-  matchContinueButton.addEventListener("click", () => dismissMatchNotification(true));
+  matchContinueButton.addEventListener("click", dismissMatchNotification);
   matchStopButton.addEventListener("click", () => {
-    dismissMatchNotification(true);
     submitFinishVote();
+    dismissMatchNotification();
   });
   matchDialog.addEventListener("cancel", (event) => event.preventDefault());
   dialogClose.addEventListener("click", () => dialog.close());
   document.addEventListener("keydown", (event) => {
+    if (matchDialog.open) return;
     const action = decisionForKey(event.key, event.repeat);
     if (dialog.open) {
       if (action === "close") dialog.close();
@@ -396,6 +407,7 @@
   });
 
   loadNext();
-  pollStatus();
-  window.setInterval(pollStatus, pollInterval);
+  statusWatch = window.MatcharrAPI.watch(`${sessionApi}/status`, pollInterval, renderStatus, (error) => {
+    if (error.status === 403 || error.status === 404) leaveSession(`/rooms/${roomId}`);
+  });
 })();

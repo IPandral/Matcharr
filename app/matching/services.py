@@ -276,39 +276,20 @@ def session_progress(
             (session_id,),
         )["total"]
     )
-    decided = int(
-        database.fetch_one(
-            "SELECT COUNT(*) AS total FROM swipes WHERE selection_session_id = %s "
-            "AND participant_id = %s",
-            (session_id, participant_id),
-        )["total"]
-    )
-    eligible_members = int(
-        database.fetch_one(
-            "SELECT COUNT(*) AS total FROM session_members "
-            "WHERE selection_session_id = %s AND is_eligible = TRUE",
-            (session_id,),
-        )["total"]
+    members = database.fetch_all(
+        "SELECT participant_id, display_name FROM session_members "
+        "WHERE selection_session_id = %s AND is_eligible = TRUE ORDER BY added_at ASC",
+        (session_id,),
     )
     finish_votes = database.fetch_all(
         "SELECT participant_id FROM session_finish_votes WHERE selection_session_id = %s",
         (session_id,),
     )
-    eligible_ids = {
-        row["participant_id"]
-        for row in database.fetch_all(
-            "SELECT participant_id FROM session_members "
-            "WHERE selection_session_id = %s AND is_eligible = TRUE",
-            (session_id,),
-        )
-    }
+    eligible_ids = {row["participant_id"] for row in members}
     valid_votes = {row["participant_id"] for row in finish_votes} & eligible_ids
     member_progress = []
-    for member in database.fetch_all(
-        "SELECT participant_id, display_name FROM session_members "
-        "WHERE selection_session_id = %s AND is_eligible = TRUE ORDER BY added_at ASC",
-        (session_id,),
-    ):
+    decided = 0
+    for member in members:
         member_decided = int(
             database.fetch_one(
                 "SELECT COUNT(*) AS total FROM swipes WHERE selection_session_id = %s "
@@ -316,6 +297,8 @@ def session_progress(
                 (session_id, member["participant_id"]),
             )["total"]
         )
+        if member["participant_id"] == participant_id:
+            decided = member_decided
         member_progress.append(
             {
                 "participant_id": member["participant_id"],
@@ -329,7 +312,7 @@ def session_progress(
         "decided": min(decided, total),
         "remaining": max(total - decided, 0),
         "finish_votes": len(valid_votes),
-        "eligible_members": eligible_members,
+        "eligible_members": len(members),
         "current_participant_voted": participant_id in valid_votes,
         "session_status": eligible["status"],
         "members": member_progress,

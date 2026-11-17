@@ -55,8 +55,9 @@ Flask routes / JSON API / CSRF + room authorization
                   +--> authenticated artwork proxied by Flask
 ```
 
-Polling is intentionally isolated in the front end so it can later be replaced
-with Server-Sent Events or WebSockets.
+Open room, swipe, and final-vote pages check for updates every 750 ms by default.
+Set `MATCHARR_POLL_INTERVAL_MS` to change this interval. Pages check again as
+soon as they return to the foreground or the browser reconnects.
 
 ## RustyDB compatibility
 
@@ -341,7 +342,6 @@ through a separate secrets manager; never put it in the database archive.
   limit should supplement it for a public deployment.
 - Discovery uses library metadata available from the configured server;
   popularity is local view count rather than a global trend feed.
-- Polling adds up to a few seconds of match-notification latency.
 - Future improvements include optional SSE/WebSockets, administrator controls,
   richer media-server hubs, browser identity transfer, scheduled sync, and
   end-to-end tests against configured Plex and Jellyfin sandboxes.

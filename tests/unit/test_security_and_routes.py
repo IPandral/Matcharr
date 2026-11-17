@@ -39,6 +39,68 @@ def test_non_member_cannot_access_room(client):
     assert response.status_code == 403
 
 
+def test_room_and_session_status_share_completed_session_with_members(
+    app, scripted_connection
+):
+    members = [
+        {"participant_id": "p1", "display_name": "Ada", "role": "owner", "is_active": True},
+        {"participant_id": "p2", "display_name": "Grace", "role": "member", "is_active": True},
+    ]
+    selection = {"id": "s1", "status": "active", "started_at": 10, "completed_at": None}
+    matches = [{"id": "ma1", "title": "Arrival", "movie_id": "m1"}]
+    votes = []
+
+    def one(query, params):
+        if "FROM room_members" in query or "FROM session_members sm" in query:
+            if params[1] in {"p1", "p2"}:
+                return {"id": params[1], "is_active": True, "status": selection["status"]}
+        if "FROM selection_sessions" in query:
+            if "status = 'active'" not in query or selection["status"] == "active":
+                return selection
+        if "FROM session_movies" in query:
+            return {"total": 3}
+        if "FROM swipes" in query:
+            return {"total": 2}
+        return None
+
+    def all_rows(query, _params):
+        if "FROM room_members" in query or "FROM session_members" in query:
+            return members
+        if "FROM matches" in query:
+            return matches
+        if "FROM session_finish_votes" in query:
+            return votes
+        return []
+
+    scripted_connection.one_handler = one
+    scripted_connection.all_handler = all_rows
+    phones = [app.test_client(), app.test_client()]
+    _identity(phones[0], "p1", "Ada")
+    _identity(phones[1], "p2", "Grace")
+    status_url = "/api/rooms/r1/sessions/s1/status"
+    for phone in phones:
+        response = phone.get(status_url)
+        assert response.headers["Cache-Control"] == "private, no-store"
+        assert [match["id"] for match in response.json["matches"]] == ["ma1"]
+
+    matches.append({"id": "ma2", "title": "Moon", "movie_id": "m2"})
+    votes.extend(members)
+    selection.update(status="completed", completed_at=20)
+    for phone in phones:
+        status = phone.get(status_url).json
+        assert status["session"]["status"] == "completed"
+        assert status["progress"]["finish_votes"] == 2
+        assert [match["id"] for match in status["matches"]] == ["ma1", "ma2"]
+        room = phone.get("/api/rooms/r1/status?session_id=s1").json
+        assert room["session"] is None
+        assert room["tracked_session"]["status"] == "completed"
+
+    outsider = app.test_client()
+    _identity(outsider, "p3", "Lin")
+    assert outsider.get(status_url).status_code == 403
+    assert outsider.get("/api/rooms/r1/status?session_id=s1").status_code == 403
+
+
 def test_invite_failures_are_rate_limited(client):
     _identity(client)
     with client.session_transaction() as browser_session:
