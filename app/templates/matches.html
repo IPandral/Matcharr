@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Matches — Matcharr{% endblock %}
 {% block content %}
-<section class="page-shell" {% if session_results %}id="results-app" data-room-id="{{ room_id }}" data-session-id="{{ session_id }}"{% endif %}>
+<section class="page-shell" {% if session_results %}id="results-app" data-room-id="{{ room_id }}"
+  data-session-id="{{ session_id }}" data-poll-interval="{{ config.MATCHARR_POLL_INTERVAL_MS }}"
+  data-winner-id="{{ result.winner.id if result.winner else '' }}"{% endif %}>
   <a class="back-link" href="{{ url_for('rooms.room_page', room_id=room_id) }}">← {{ membership.room_name }}</a>
   <div class="page-heading"><div>
     <p class="eyebrow">{{ "Session complete" if session_results else "Shared favourites" }}</p>

@@ -13,7 +13,7 @@ on:
 
 concurrency:
   group: container-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   REGISTRY: ghcr.io
@@ -76,6 +76,8 @@ jobs:
     name: Build and publish
     needs: test
     runs-on: ubuntu-latest
+    outputs:
+      release-tag: ${{ steps.version.outputs.tag }}
     permissions:
       contents: read
       packages: write
@@ -90,6 +92,34 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Select release version
+        id: version
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_RUN_ATTEMPT" -gt 1 ]]; then
+            main_sha=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')
+            if [[ "$main_sha" != "$GITHUB_SHA" ]]; then
+              echo "::error::Run the workflow on the current main commit to publish a release."
+              exit 1
+            fi
+          fi
+
+          tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/tags" --jq '.[] | [.name, .commit.sha] | @tsv')
+          stable_tags=$(awk '$1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/' <<< "$tags")
+          tag=$(awk -v sha="$GITHUB_SHA" '$2 == sha {print $1}' <<< "$stable_tags" | sort -V | tail -n 1)
+          if [[ -z "$tag" ]]; then
+            latest=$(awk '{print $1}' <<< "$stable_tags" | sort -V | tail -n 1)
+            tag=v1.0.0
+            if [[ -n "$latest" ]]; then
+              IFS=. read -r major minor _ <<< "${latest#v}"
+              tag="v$major.$((10#$minor + 1)).0"
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
@@ -109,6 +139,9 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.tag }},enable=${{ steps.version.outputs.tag != '' }}
             type=sha,prefix=sha-
           labels: |
             org.opencontainers.image.title=Matcharr
@@ -135,3 +168,24 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  release:
+    name: Create GitHub release
+    if: github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release notes and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.publish.outputs.release-tag }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "Matcharr ${RELEASE_TAG#v}" --generate-notes
+          fi

@@ -4,7 +4,10 @@
   if (!page || !window.MatcharrAPI) return;
   const roomId = page.dataset.roomId;
   const lobbyId = page.dataset.lobbyId;
-  let hadSession = Boolean(document.querySelector(".active-banner"));
+  const sessionId = page.dataset.sessionId;
+  const pollInterval = Number(page.dataset.pollInterval);
+  const statusUrl = `/api/rooms/${roomId}/status` +
+    (sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "");
   let searchTimer = null;
 
   function escapeText(value) {
@@ -39,31 +42,35 @@
     }
   }
 
-  async function poll() {
-    try {
-      const status = await window.MatcharrAPI.get(`/api/rooms/${roomId}/status`);
-      const hasSession = Boolean(status.session);
-      if (!hadSession && hasSession) {
-        window.location.assign(`/rooms/${roomId}/swipe?session_id=${encodeURIComponent(status.session.id)}`);
-        return;
-      }
-      hadSession = hasSession;
-      renderLobby(status);
-    } catch (_) {
-      // Temporary polling failures should not interrupt the lobby.
+  function renderStatus(status) {
+    if (status.tracked_session?.status === "completed" ||
+        (sessionId && status.session?.id === sessionId && status.progress?.session_status === "completed")) {
+      statusWatch.stop();
+      window.location.replace(`/rooms/${roomId}/matches?session_id=${encodeURIComponent(sessionId)}`);
+      return;
     }
+    if (status.session?.id !== sessionId) {
+      statusWatch.stop();
+      if (status.session && status.progress?.session_status === "active") {
+        window.location.assign(`/rooms/${roomId}/swipe?session_id=${encodeURIComponent(status.session.id)}`);
+      } else {
+        window.location.reload();
+      }
+      return;
+    }
+    renderLobby(status);
   }
 
   const readyButton = document.getElementById("lobby-ready-button");
   readyButton?.addEventListener("click", async () => {
     readyButton.disabled = true;
     try {
-      const result = await window.MatcharrAPI.post(
+      await window.MatcharrAPI.post(
         `/api/rooms/${roomId}/lobbies/${lobbyId}/ready`,
         {}
       );
-      renderLobby({ lobby: { id: lobbyId }, lobby_members: result.members });
       readyButton.textContent = "Ready";
+      statusWatch.refresh();
     } catch (error) {
       readyButton.disabled = false;
       readyButton.textContent = error.message;
@@ -108,7 +115,7 @@
       results.innerHTML = "";
       readyButton.disabled = false;
       readyButton.textContent = "I’m ready";
-      await poll();
+      statusWatch.refresh();
     } catch (error) {
       button.disabled = false;
       button.textContent = error.message;
@@ -129,6 +136,5 @@
     window.setTimeout(() => { copyButton.textContent = "Copy link"; }, 1800);
   });
 
-  poll();
-  window.setInterval(poll, 4000);
+  const statusWatch = window.MatcharrAPI.watch(statusUrl, pollInterval, renderStatus);
 })();

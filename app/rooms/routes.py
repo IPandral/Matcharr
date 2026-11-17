@@ -18,7 +18,7 @@ from flask import (
 )
 
 from app.identity.services import save_identity
-from app.matching.services import match_details, session_matches, session_results
+from app.matching.services import match_details, session_results
 
 from .services import (
     AuthorizationError,
@@ -471,16 +471,13 @@ def swipe_page(room_id):
     )
     if not session_id:
         return redirect(url_for("rooms.room_page", room_id=room_id))
-    initial_matches = session_matches(_db(), room_id, session_id, identity[0])
     return render_template(
         "swipe.html",
         room_id=room_id,
         session_id=session_id,
         membership=details["membership"],
-        poll_interval=current_app.config["MATCHARR_POLL_INTERVAL_MS"],
         swipe_distance=current_app.config["MATCHARR_SWIPE_DISTANCE_THRESHOLD"],
         swipe_velocity=current_app.config["MATCHARR_SWIPE_VELOCITY_THRESHOLD"],
-        initial_match_ids=[match["id"] for match in initial_matches],
     )
 
 

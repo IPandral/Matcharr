@@ -5,8 +5,8 @@
 <section id="swipe-app" class="swipe-app"
   data-room-id="{{ room_id }}"
   data-session-id="{{ session_id }}"
-  data-initial-match-ids="{{ initial_match_ids | tojson | forceescape }}"
-  data-poll-interval="{{ poll_interval }}"
+  data-membership-id="{{ membership.id }}"
+  data-poll-interval="{{ config.MATCHARR_POLL_INTERVAL_MS }}"
   data-distance-threshold="{{ swipe_distance }}"
   data-velocity-threshold="{{ swipe_velocity }}">
   <header class="swipe-header">
