@@ -16,7 +16,9 @@ RUN useradd --create-home --uid 10001 matcharr
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# RustyDB requires the native Connector/Python extension.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -c "import _mysql_connector"
 
 COPY LICENSE run.py ./
 COPY app/ app/
