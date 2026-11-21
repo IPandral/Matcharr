@@ -2,6 +2,8 @@
 {% block title %}{{ membership.room_name }} — Matcharr{% endblock %}
 {% block content %}
 <section class="page-shell room-page" data-room-id="{{ room_id }}"
+  data-poll-interval="{{ config.MATCHARR_POLL_INTERVAL_MS }}"
+  {% if active_session %}data-session-id="{{ active_session.id }}"{% endif %}
   {% if lobby %}data-lobby-id="{{ lobby.id }}"{% endif %}>
   <a class="back-link" href="{{ url_for('rooms.dashboard') }}">← Your rooms</a>
   <div class="room-hero">

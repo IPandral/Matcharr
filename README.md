@@ -55,8 +55,9 @@ Flask routes / JSON API / CSRF + room authorization
                   +--> authenticated artwork proxied by Flask
 ```
 
-Polling is intentionally isolated in the front end so it can later be replaced
-with Server-Sent Events or WebSockets.
+Open room, swipe, and final-vote pages check for updates every 750 ms by default.
+Set `MATCHARR_POLL_INTERVAL_MS` to change this interval. Pages check again as
+soon as they return to the foreground or the browser reconnects.
 
 ## RustyDB compatibility
 
@@ -206,8 +207,19 @@ For plain HTTP local development, set `MATCHARR_SECURE_COOKIES=false`. Keep it
 
 ## Docker deployment
 
-Complete the [media server setup](#media-server-setup). For local testing over plain HTTP,
-set `MATCHARR_SECURE_COOKIES=false`. Then pull and start the published images:
+Matcharr images are hosted on [GitHub Container Registry](https://github.com/users/IPandral/packages/container/package/matcharr).
+Pull the latest image directly with:
+
+```bash
+docker pull ghcr.io/ipandral/matcharr:latest
+```
+
+To run Matcharr with RustyDB, place [`docker-compose.yml`](docker-compose.yml)
+and [`.env.example`](.env.example) in the same directory. Copy the template
+to `.env` with `cp .env.example .env` on macOS or Linux, or
+`Copy-Item .env.example .env` in PowerShell. Complete the
+[media server setup](#media-server-setup). For local testing over plain HTTP,
+set `MATCHARR_SECURE_COOKIES=false`. Then start the stack:
 
 ```bash
 docker compose pull
@@ -215,7 +227,10 @@ docker compose up -d
 ```
 
 Compose pulls `ghcr.io/ipandral/matcharr:latest` and the pinned
-`ghcr.io/ipandral/rustydb` image. RustyDB exposes ports 3307 and 8080 only on
+`ghcr.io/ipandral/rustydb` image. Set `MATCHARR_IMAGE` in `.env` to use a
+specific Matcharr version, such as `ghcr.io/ipandral/matcharr:1.0.0`.
+If the Matcharr package is private, sign in to `ghcr.io` before pulling.
+RustyDB exposes ports 3307 and 8080 only on
 the internal Compose network.
 Matcharr waits for its health check, applies migrations, and starts Gunicorn.
 Only the Matcharr HTTP port is published, on the host loopback interface by
@@ -230,11 +245,15 @@ docker pull ghcr.io/ipandral/matcharr:1.0.0
 
 ## Container releases
 
-GitHub Actions builds Linux `amd64` and `arm64` images. A push to `main`
-publishes `latest` and a commit tag such as `sha-a1b2c3d`. Pushing a semantic
-version tag such as `v1.2.3` additionally publishes `1.2.3`, `1.2`, and `1`.
-Pull requests build and test the image without publishing it. CI runs the
-Python integration suite against the same RustyDB image pinned in Compose.
+GitHub Actions builds Linux `amd64` and `arm64` images. Each new commit that
+passes tests and publishes its image from `main` gets the next minor GitHub
+Release, starting with `v1.0.0`, then `v1.1.0`, `v1.2.0`, and so on. The
+workflow publishes the full version, minor, major, `latest`, and commit image
+tags. A rerun of an already released commit reuses its version.
+
+Push a semantic version tag such as `v2.0.0` to publish that Docker version
+manually. Pull requests build and test without publishing. CI runs the Python
+integration suite against the same RustyDB image pinned in Compose.
 
 After the first workflow run, the repository owner must open the Matcharr
 package settings on GitHub and change its visibility to **Public** so
@@ -323,7 +342,6 @@ through a separate secrets manager; never put it in the database archive.
   limit should supplement it for a public deployment.
 - Discovery uses library metadata available from the configured server;
   popularity is local view count rather than a global trend feed.
-- Polling adds up to a few seconds of match-notification latency.
 - Future improvements include optional SSE/WebSockets, administrator controls,
   richer media-server hubs, browser identity transfer, scheduled sync, and
   end-to-end tests against configured Plex and Jellyfin sandboxes.

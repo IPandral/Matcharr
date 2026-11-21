@@ -23,8 +23,52 @@
     return payload;
   }
 
+  function get(url, signal) {
+    return request(url, { cache: "no-store", signal });
+  }
+
+  function watch(url, interval, onUpdate, onError) {
+    let timer;
+    let pending = false;
+    let stopped = false;
+
+    async function refresh() {
+      window.clearTimeout(timer);
+      if (stopped || pending || document.hidden) return;
+      pending = true;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
+      try {
+        const payload = await get(url, controller.signal);
+        if (!stopped) onUpdate(payload);
+      } catch (error) {
+        if (!stopped) onError?.(error);
+      } finally {
+        window.clearTimeout(timeout);
+        pending = false;
+        if (!stopped && !document.hidden) timer = window.setTimeout(refresh, interval);
+      }
+    }
+
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("pageshow", refresh);
+    window.addEventListener("online", refresh);
+    refresh();
+    return {
+      refresh,
+      stop() {
+        stopped = true;
+        window.clearTimeout(timer);
+        document.removeEventListener("visibilitychange", refresh);
+        window.removeEventListener("pageshow", refresh);
+        window.removeEventListener("online", refresh);
+      },
+    };
+  }
+
   window.MatcharrAPI = {
-    get: (url) => request(url),
+    get,
+    watch,
     post: (url, payload) => request(url, { method: "POST", body: JSON.stringify(payload) }),
   };
 })();

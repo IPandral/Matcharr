@@ -4,6 +4,8 @@
   if (!app || !window.MatcharrAPI) return;
   const roomId = app.dataset.roomId;
   const sessionId = app.dataset.sessionId;
+  const pollInterval = Number(app.dataset.pollInterval);
+  const sessionApi = `/api/rooms/${roomId}/sessions/${sessionId}`;
 
   function render(result) {
     const grid = app.querySelector(".match-grid");
@@ -22,7 +24,7 @@
         ? `Tonight’s winner: ${result.winner.title}`
         : `${result.votes_cast} of ${result.eligible_members} final votes cast.`;
     }
-    if (result.winner && !document.getElementById("winner-banner")) window.location.reload();
+    if ((result.winner?.id || "") !== app.dataset.winnerId) window.location.reload();
   }
 
   app.addEventListener("click", async (event) => {
@@ -31,21 +33,14 @@
     button.disabled = true;
     try {
       render(await window.MatcharrAPI.post(
-        `/api/rooms/${roomId}/sessions/${sessionId}/final-vote`,
+        `${sessionApi}/final-vote`,
         { match_id: button.dataset.matchId }
       ));
+      resultsWatch.refresh();
     } finally {
       button.disabled = false;
     }
   });
 
-  window.setInterval(async () => {
-    try {
-      render(await window.MatcharrAPI.get(
-        `/api/rooms/${roomId}/sessions/${sessionId}/results`
-      ));
-    } catch (_) {
-      // Results polling is best-effort.
-    }
-  }, 4000);
+  const resultsWatch = window.MatcharrAPI.watch(`${sessionApi}/results`, pollInterval, render);
 })();
