@@ -25,23 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    services:
-      rustydb:
-        image: ghcr.io/ipandral/rustydb@sha256:89e77a7f364166e852c944100e7068eeab4a4b8a1856d9ed4b5756d19f34ba44
-        env:
-          RUSTYDB_HOST: 0.0.0.0
-          RUSTYDB_PORT: "8080"
-          RUSTYDB_WIRE_PORT: "3307"
-          RUSTYDB_USERNAME: matcharr
-          RUSTYDB_PASSWORD: ci-isolated-db-only
-          RUSTYDB_MEMORY_ONLY: "true"
-        ports:
-          - 3307:3307
-        options: >-
-          --health-cmd "curl --fail http://127.0.0.1:8080/health"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -49,11 +32,41 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: "3.15"
           cache: pip
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
+
+      - name: Start RustyDB with verified TLS
+        run: |
+          export RUSTYDB_TLS_DIR="$RUNNER_TEMP/rustydb-tls"
+          bash scripts/generate-rustydb-tls.sh "$RUSTYDB_TLS_DIR"
+          sudo chown 1000 "$RUSTYDB_TLS_DIR/server.key"
+          export RUSTYDB_PASSWORD="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$RUSTYDB_PASSWORD"
+          {
+            printf 'RUSTYDB_PASSWORD=%s\n' "$RUSTYDB_PASSWORD"
+            printf 'RUSTYDB_TLS_CA=%s/ca.crt\n' "$RUSTYDB_TLS_DIR"
+          } >> "$GITHUB_ENV"
+
+          SECRET_KEY="$(openssl rand -hex 32)" docker compose run --detach --no-deps \
+            --name matcharr-rustydb-ci --publish 127.0.0.1:3307:3307 \
+            -e RUSTYDB_MEMORY_ONLY=true rustydb
+
+          for attempt in {1..25}; do
+            status=$(docker inspect --format '{{.State.Health.Status}}' matcharr-rustydb-ci)
+            if [[ "$status" == healthy ]]; then
+              exit 0
+            fi
+            if [[ "$status" == unhealthy || "$(docker inspect --format '{{.State.Running}}' matcharr-rustydb-ci)" == false ]]; then
+              break
+            fi
+            sleep 2
+          done
+          docker logs matcharr-rustydb-ci
+          docker inspect --format '{{json .State.Health}}' matcharr-rustydb-ci
+          exit 1
 
       - name: Run Python unit and integration tests
         env:
@@ -61,7 +74,6 @@ jobs:
           RUSTYDB_HOST: 127.0.0.1
           RUSTYDB_WIRE_PORT: "3307"
           RUSTYDB_USERNAME: matcharr
-          RUSTYDB_PASSWORD: ci-isolated-db-only
         run: pytest
 
       - name: Set up Node.js

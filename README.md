@@ -64,8 +64,8 @@ soon as they return to the foreground or the browser reconnects.
 RustyDB is required; Matcharr never falls back to SQLite, PostgreSQL, MySQL, or
 another database. The schema and driver layer are tested against the current
 [`ghcr.io/ipandral/rustydb`](https://github.com/IPandral/RustyDB/pkgs/container/rustydb)
-v0.3.0-beta image pinned by digest in Compose. That RustyDB image is built
-for Linux AMD64, so the bundled stack requires an AMD64 host or emulation.
+image pinned by digest in Compose. That RustyDB image is built for Linux
+AMD64, so the bundled stack requires an AMD64 host or emulation.
 
 Relevant implemented behavior:
 
@@ -75,9 +75,9 @@ Relevant implemented behavior:
 - writes use binary-protocol parameters; parameterized reads use the text-result
   protocol for reliable numeric decoding; transactions use connection-local
   `BEGIN`/`COMMIT`/`ROLLBACK`;
-- the Connector/Python C-extension path is selected because its pure-Python
-  path emits `SET @@session.autocommit = OFF`, which RustyDB v0.3.0-beta
-  rejects; RustyDB's native autocommit applies outside explicit transactions;
+- Matcharr uses pure-Python Connector/Python with certificate and hostname
+  verification, `caching_sha2_password` authentication, and autocommit enabled
+  outside explicit transactions;
 - trusted application booleans use fixed `TRUE`/`FALSE` SQL variants because
   Connector/Python encodes Python `bool` as an integer parameter while RustyDB
   strictly distinguishes `BOOLEAN` and `INTEGER`; all user text and numeric
@@ -186,10 +186,11 @@ highly rated, and unwatched feeds remain available.
 
 ## Local development
 
-1. Create a Python 3.12+ virtual environment.
+1. Create a Python 3.15 virtual environment.
 2. Install `requirements.txt`.
-3. Start RustyDB with its `server` feature and configure the values from
-   `.env.example`.
+3. Start RustyDB with its `server` feature and TLS enabled. Configure the
+   values from `.env.example` and set `RUSTYDB_HOST` to a hostname or IP
+   covered by the server certificate.
 4. Apply migrations and sync the selected media server.
 5. Run Flask:
 
@@ -200,8 +201,10 @@ flask --app run.py media-sync
 flask --app run.py run --debug
 ```
 
-Set `SECRET_KEY` and `RUSTYDB_PASSWORD` in your shell before running these
-commands. Generate a signing key with `python -c "import secrets; print(secrets.token_hex(32))"`.
+Set `SECRET_KEY`, `RUSTYDB_PASSWORD`, and `RUSTYDB_TLS_CA` (the path to the
+PEM CA bundle that signed the RustyDB server certificate) in your shell
+before running these commands. Generate a signing key with
+`python -c "import secrets; print(secrets.token_hex(32))"`.
 For plain HTTP local development, set `MATCHARR_SECURE_COOKIES=false`. Keep it
 `true` behind HTTPS in production.
 
@@ -219,7 +222,22 @@ and [`.env.example`](.env.example) in the same directory. Copy the template
 to `.env` with `cp .env.example .env` on macOS or Linux, or
 `Copy-Item .env.example .env` in PowerShell. Complete the
 [media server setup](#media-server-setup). For local testing over plain HTTP,
-set `MATCHARR_SECURE_COOKIES=false`. Then start the stack:
+set `MATCHARR_SECURE_COOKIES=false`.
+
+RustyDB requires a certificate for the Compose hostname `rustydb`. Place
+`ca.crt`, `server.crt` (with any intermediates), and `server.key` in the
+directory set by `RUSTYDB_TLS_DIR`, which defaults to `./rustydb-tls`.
+To generate a private CA and a one-year server certificate, download
+[`scripts/generate-rustydb-tls.sh`](scripts/generate-rustydb-tls.sh) and run
+`bash generate-rustydb-tls.sh` from the Compose directory with Bash and
+OpenSSL installed. On Linux, grant the RustyDB container user read access to the
+private key with `sudo chown 1000 ./rustydb-tls/server.key` and keep its mode
+at `0600`. Matcharr mounts only the CA certificate.
+
+For upgrades, [back up the existing database](#backup-and-recovery) first and
+replace the Compose file and Matcharr image together. Keep the existing Compose
+project name and `rustydb_data` volume. Once the certificates and credentials are
+in place, start the stack:
 
 ```bash
 docker compose pull
@@ -230,8 +248,8 @@ Compose pulls `ghcr.io/ipandral/matcharr:latest` and the pinned
 `ghcr.io/ipandral/rustydb` image. Set `MATCHARR_IMAGE` in `.env` to use a
 specific Matcharr version, such as `ghcr.io/ipandral/matcharr:1.0.0`.
 If the Matcharr package is private, sign in to `ghcr.io` before pulling.
-RustyDB exposes ports 3307 and 8080 only on
-the internal Compose network.
+RustyDB exposes its TLS-enabled MySQL wire port (3307) and HTTPS port (8080)
+only on the internal Compose network.
 Matcharr waits for its health check, applies migrations, and starts Gunicorn.
 Only the Matcharr HTTP port is published, on the host loopback interface by
 default. Set `MATCHARR_BIND_ADDRESS` to the host's LAN address if trusted
@@ -289,7 +307,9 @@ npm test
 ```
 
 Backend unit tests use in-memory fakes or scripted database connections, not
-SQLite. Optional real integration tests require a live RustyDB wire server:
+SQLite. Real integration tests require a live RustyDB wire server with TLS.
+Set `RUSTYDB_HOST`, `RUSTYDB_WIRE_PORT`, `RUSTYDB_USERNAME`,
+`RUSTYDB_PASSWORD`, and `RUSTYDB_TLS_CA` for that server:
 
 ```bash
 MATCHARR_RUSTYDB_INTEGRATION=1 pytest -m integration

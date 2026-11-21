@@ -31,12 +31,16 @@ def create_app(config: dict | object | None = None, database=None) -> Flask:
         db_password = (app.config["RUSTYDB_PASSWORD"] or "").strip()
         if not db_password or db_password in {"replace-this", "replace-this-with-a-long-random-password"}:
             raise ValueError("Set RUSTYDB_PASSWORD to a unique password for RustyDB.")
+        tls_ca = app.config["RUSTYDB_TLS_CA"]
+        if not tls_ca:
+            raise ValueError("Set RUSTYDB_TLS_CA to the PEM CA bundle for RustyDB.")
         database = RustyDB(
             RustyDBConfig(
                 host=app.config["RUSTYDB_HOST"],
                 port=app.config["RUSTYDB_WIRE_PORT"],
                 user=app.config["RUSTYDB_USERNAME"],
                 password=app.config["RUSTYDB_PASSWORD"],
+                tls_ca=tls_ca,
                 connect_timeout=app.config["RUSTYDB_CONNECT_TIMEOUT"],
             )
         )
