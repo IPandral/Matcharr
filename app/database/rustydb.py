@@ -93,11 +93,7 @@ class RustyDB:
                 password=self.config.password,
                 connection_timeout=self.config.connect_timeout,
                 auth_plugin="mysql_native_password",
-                # Connector/Python's pure implementation emits
-                # `SET @@session.autocommit = OFF`, which RustyDB 0.3.0-beta
-                # does not parse. The C-extension path uses a compatible
-                # handshake and remains mysql-connector-python.
-                use_pure=False,
+                use_pure=True,
             )
         except MySQLError as error:
             raise _translate_error(error) from error
