@@ -14,5 +14,6 @@ __pycache__
 htmlcov
 .tmp-rustydb-inspect
 rustydb_data
+rustydb-tls
 tests
 

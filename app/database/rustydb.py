@@ -25,6 +25,7 @@ class RustyDBConfig:
     port: int
     user: str
     password: str
+    tls_ca: str
     connect_timeout: int = 5
 
 
@@ -46,10 +47,8 @@ class RustyDBConnection:
 
     def fetch_one(self, query: str, parameters: Parameters = None) -> dict | None:
         # RustyDB 0.3's prepared-result path can report numeric columns as
-        # strings while returning their raw binary representation. Connector/C
-        # then attempts UTF-8 decoding and raises for values such as 0x89.
-        # Parameterized non-prepared cursors still escape values safely, while
-        # using the wire text-result format that RustyDB handles correctly.
+        # strings while returning their raw binary representation. Parameterized
+        # reads use the wire text-result format for reliable decoding.
         cursor = self.connection.cursor(dictionary=True)
         try:
             cursor.execute(query, parameters or ())
@@ -92,12 +91,12 @@ class RustyDB:
                 user=self.config.user,
                 password=self.config.password,
                 connection_timeout=self.config.connect_timeout,
-                auth_plugin="mysql_native_password",
-                # Connector/Python's pure implementation emits
-                # `SET @@session.autocommit = OFF`, which RustyDB 0.3.0-beta
-                # does not parse. The C-extension path uses a compatible
-                # handshake and remains mysql-connector-python.
-                use_pure=False,
+                auth_plugin="caching_sha2_password",
+                use_pure=True,
+                autocommit=True,
+                ssl_ca=self.config.tls_ca,
+                ssl_verify_cert=True,
+                ssl_verify_identity=True,
             )
         except MySQLError as error:
             raise _translate_error(error) from error

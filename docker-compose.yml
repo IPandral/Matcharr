@@ -1,6 +1,6 @@
 services:
   rustydb:
-    image: ghcr.io/ipandral/rustydb@sha256:89e77a7f364166e852c944100e7068eeab4a4b8a1856d9ed4b5756d19f34ba44
+    image: ghcr.io/ipandral/rustydb@sha256:0a407ae751b30b8a4e11c154556276b428e2a63a71076063c770599289a5786e
     pull_policy: always
     restart: unless-stopped
     environment:
@@ -9,19 +9,28 @@ services:
       RUSTYDB_WIRE_PORT: 3307
       RUSTYDB_USERNAME: ${RUSTYDB_USERNAME:-matcharr}
       RUSTYDB_PASSWORD: ${RUSTYDB_PASSWORD:?Set RUSTYDB_PASSWORD in .env}
+      RUSTYDB_TLS_CERT: /tls/server.crt
+      RUSTYDB_TLS_KEY: /tls/server.key
+      RUSTYDB_TLS_CA: /tls/ca.crt
+      RUSTYDB_HEALTH_HOST: rustydb
       RUSTYDB_DATA_DIR: /data
       RUSTYDB_MEMORY_ONLY: "false"
     volumes:
       - rustydb_data:/data
+      - type: bind
+        source: ${RUSTYDB_TLS_DIR:-./rustydb-tls}
+        target: /tls
+        read_only: true
+        bind:
+          create_host_path: false
     expose:
       - "3307"
       - "8080"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8080/health"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
       retries: 10
-      start_period: 20s
+      start_period: 5s
 
   matcharr:
     image: ${MATCHARR_IMAGE:-ghcr.io/ipandral/matcharr:latest}
@@ -40,6 +49,7 @@ services:
       RUSTYDB_WIRE_PORT: 3307
       RUSTYDB_USERNAME: ${RUSTYDB_USERNAME:-matcharr}
       RUSTYDB_PASSWORD: ${RUSTYDB_PASSWORD:?Set RUSTYDB_PASSWORD in .env}
+      RUSTYDB_TLS_CA: /tls/ca.crt
       MEDIA_SERVER_TYPE: ${MEDIA_SERVER_TYPE:-plex}
       PLEX_URL: ${PLEX_URL:-}
       PLEX_TOKEN: ${PLEX_TOKEN:-}
@@ -61,6 +71,13 @@ services:
       MATCHARR_INVITE_WINDOW_SECONDS: ${MATCHARR_INVITE_WINDOW_SECONDS:-300}
       MATCHARR_POLL_INTERVAL_MS: ${MATCHARR_POLL_INTERVAL_MS:-750}
       MATCHARR_MAX_REQUEST_BYTES: ${MATCHARR_MAX_REQUEST_BYTES:-1048576}
+    volumes:
+      - type: bind
+        source: ${RUSTYDB_TLS_DIR:-./rustydb-tls}/ca.crt
+        target: /tls/ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://127.0.0.1:5000/health"]
       interval: 15s

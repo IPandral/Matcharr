@@ -15,6 +15,7 @@ def database():
             port=int(os.getenv("RUSTYDB_WIRE_PORT", "3307")),
             user=os.getenv("RUSTYDB_USERNAME", "matcharr"),
             password=os.getenv("RUSTYDB_PASSWORD", ""),
+            tls_ca=os.environ["RUSTYDB_TLS_CA"],
         )
     )
 
